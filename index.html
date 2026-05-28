@@ -67,6 +67,16 @@ onAuthStateChanged(auth, async (user) => {
         S.currentUser.registeredAt = d.registeredAt || null;
         applyTheme();
       }
+      // ── Verifica se e-mail está autorizado como premium pelo Make/MP ──
+      if(!S.currentUser.isPremium){
+        try{
+          const authSnap = await getDoc(doc(db, 'authorized_emails', user.email));
+          if(authSnap.exists()){
+            S.currentUser.isPremium = true;
+            await setDoc(doc(db, 'users', user.uid), {isPremium: true}, {merge: true});
+          }
+        } catch(e){ console.warn('Erro ao verificar autorização premium:', e); }
+      }
     } catch(e) { console.warn('Firestore load error', e); }
     const savedView = localStorage.getItem('mdv_view');
     if (savedView && ['home','list','planning','help'].includes(savedView)) S.view = savedView;
@@ -674,7 +684,6 @@ body.light .pk-sb-footer{border-top-color:rgba(0,0,0,.1)}
 // ═══════════════════════════════════════════════════════════
 //  CONFIGURAÇÃO — edite aqui antes de distribuir
 // ═══════════════════════════════════════════════════════════
-const PREMIUM_CODE = atob('QVRJVkFSUEFZS0VFUDIwMjY='); // ofuscado
 const JARVIS_URL   = 'https://jarvis-e32a.onrender.com';
 const MONTHS       = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 function TODAY(){ return new Date(); } // sempre retorna a data/hora atual correta
@@ -724,8 +733,6 @@ let S = {
   aiLoading: false,
   aiInput: '',
   jarvisConvId: null,  // ID da conversa no Jarvis — persistido por usuário
-  codeInput: '',
-  codeError: '',
   // faturas (armazenadas no IndexedDB — não no localStorage)
   faturas: [],        // lista em memória carregada do IndexedDB
   faturaView: null,   // id da fatura sendo visualizada
@@ -1154,38 +1161,7 @@ function doLogout(){
   toast('Sessão encerrada. Até logo! 👋');
 }
 
-async function activatePremium(){
-  if(S.codeInput.trim().toUpperCase()!==PREMIUM_CODE){
-    S.codeError='Código inválido. Verifique e tente novamente.'; render(); return;
-  }
-  // ── Verifica se o código já foi usado no Firestore ──
-  if(!window._fbUser){ S.codeError='Você precisa estar logado.'; render(); return; }
-  try{
-    const { doc: fbDoc, getDoc: fbGet, setDoc: fbSet } = window._fbFns;
-    const db = window._fbDb;
-    const codeRef = fbDoc(db, 'used_codes', 'ATIVARPAYKEEP2026');
-    const snap = await fbGet(codeRef);
-    if(snap.exists()){
-      const usedBy = snap.data().usedBy || [];
-      if(usedBy.includes(window._fbUser.email)){
-        // Já usou antes — reativa normalmente (ex: trocou de dispositivo)
-        S.currentUser.isPremium=true; S.codeInput=''; S.codeError='';
-        saveData(); toast('Premium reativado! ✅'); render(); return;
-      }
-      if(usedBy.length >= 1){
-        S.codeError='Este código já foi utilizado por outro usuário.'; render(); return;
-      }
-    }
-    // Registra o uso no Firestore
-    await fbSet(codeRef, { usedBy: [window._fbUser.email], usedAt: new Date().toISOString() }, { merge: true });
-  } catch(e){
-    console.warn('Erro ao verificar código:', e);
-    // Se der erro de rede, permite ativar sem bloquear
-  }
-  S.currentUser.isPremium=true; S.codeInput=''; S.codeError='';
-  saveData();
-  toast('Premium ativado! Bem-vindo ao Planejamento 🌟'); render();
-}
+// Premium ativado automaticamente via Make + Firebase (authorized_emails)
 
 
 // ═══════════════════════════════════════════════════════════
@@ -2180,15 +2156,7 @@ function viewPaywall(){
     <div style="font-size:36px;font-weight:800;color:var(--gold)">R$ 9,90</div>
     <div style="font-size:13px;color:var(--text3);margin-bottom:14px">Sem mensalidade. Sem surpresas.</div>
     <button class="btn btn-gold" onclick="window.open('https://mpago.la/1UkuqLt','_blank')">🌟 Garantir Premium — R$ 9,90</button>
-    <button class="btn btn-ghost btn-sm" style="margin-top:10px;color:var(--text3)" onclick="document.getElementById('codeSection').style.display='block';document.getElementById('codeSection').scrollIntoView({behavior:'smooth'})">Já paguei — inserir código de ativação</button>
-  </div>
-  <div id="codeSection" style="display:none;margin-top:16px">
-    <div class="card">
-      <label class="lbl">Código de Ativação</label>
-      <input type="text" placeholder="Digite o código recebido..." style="text-transform:uppercase;letter-spacing:2px;font-size:18px;text-align:center" oninput="S.codeInput=this.value.toUpperCase();S.codeError=''" value="${escHtml(S.codeInput)}">
-      ${S.codeError?`<p style="color:var(--red);font-size:14px;margin-top:8px">${escHtml(S.codeError)}</p>`:''}
-      <button class="btn btn-primary mt12" onclick="activatePremium()">✅ Ativar Premium</button>
-    </div>
+    <p style="margin-top:12px;font-size:13px;color:var(--text3)">✅ Após o pagamento, seu Premium é ativado automaticamente no app.</p>
   </div>
   </div>`;
 }
