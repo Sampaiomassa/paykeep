@@ -1106,6 +1106,11 @@ function doRegister(){
       const registeredAt = new Date().toISOString();
       S.currentUser = { email: cred.user.email, isPremium: false, uid: cred.user.uid, registeredAt };
       await window._fbSaveData();
+      fetch('https://hook.us2.make.com/j1k56lw1cvdp4obej8xxv5shj2tebv2a', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: cred.user.email })
+});
       toast('Bem-vindo ao PayKeep! 🎉');
       S.view='home'; render();
     })
